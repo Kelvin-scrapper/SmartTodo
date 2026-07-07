@@ -2,8 +2,11 @@ import { ScrollView, View, Text, TouchableOpacity, StyleSheet } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import T from '../../theme/tokens';
-import { SEED_TASKS } from '../../data/seed';
+import type { Task } from '../../data/seed';
+import { useTasks } from '../../store/TasksContext';
 import ScheduleRow from '../../components/today/ScheduleRow';
+import ProgressRing from '../../components/today/ProgressRing';
+import AddTaskSheet from '../../components/today/AddTaskSheet';
 
 const USER_NAME = 'Alex';
 
@@ -21,9 +24,11 @@ function todayLabel() {
 }
 
 export default function TodayScreen() {
-  const [tasks, setTasks] = useState(SEED_TASKS);
+  const { tasks, toggleTask, toggleSubtask, addTask } = useTasks();
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const ref = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const LIMIT_SEC = 12 * 60;
@@ -39,9 +44,6 @@ export default function TodayScreen() {
     return () => { if (ref.current) clearInterval(ref.current); };
   }, [running]);
 
-  const toggle   = (id: string) =>
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
-
   const upcoming  = tasks.filter(t => !t.done);
   const completed = tasks.filter(t => t.done);
   const focus     = upcoming[0];
@@ -51,6 +53,21 @@ export default function TodayScreen() {
   const timeStr   = hh > 0 ? `${hh}h ${mm > 0 ? mm + 'm' : ''}`.trim() : `${mm}m`;
   const mm_left   = Math.floor(remain / 60);
   const ss_left   = remain % 60;
+
+  const handleAdd = (title: string, opts: { estimate: number; goalId: string | null }) => {
+    const task: Task = {
+      id: `t${Date.now()}`,
+      title,
+      estimate: opts.estimate,
+      actual: 0,
+      done: false,
+      timeBlock: 'Later today',
+      goalId: opts.goalId,
+      priority: 'medium',
+      aiNote: null,
+    };
+    addTask(task);
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }} edges={['top']}>
@@ -80,14 +97,7 @@ export default function TodayScreen() {
             <Text style={s.focusMeta}>{focus.timeBlock} · {focus.estimate} min</Text>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 }}>
-              {/* Progress ring (simple view-based) */}
-              <View style={[s.ring, { backgroundColor: T.sageSoft }]}>
-                <View style={[s.ringArc, { opacity: 0.15 + progress * 0.85, backgroundColor: T.sage }]} />
-                <View style={s.ringInner}>
-                  <Text style={s.ringNum}>{mm_left}:{String(ss_left).padStart(2, '0')}</Text>
-                  <Text style={s.ringSub}>left</Text>
-                </View>
-              </View>
+              <ProgressRing progress={progress} minutesLeft={mm_left} secondsLeft={ss_left} />
 
               {/* Start / Pause */}
               <TouchableOpacity
@@ -102,7 +112,7 @@ export default function TodayScreen() {
 
               {/* Complete */}
               <TouchableOpacity
-                onPress={() => { toggle(focus.id); setRunning(false); setElapsed(0); }}
+                onPress={() => { toggleTask(focus.id); setRunning(false); setElapsed(0); }}
                 style={s.completeBtn}
                 activeOpacity={0.7}
               >
@@ -120,7 +130,14 @@ export default function TodayScreen() {
           </View>
 
           {upcoming.map(t => (
-            <ScheduleRow key={t.id} task={t} onToggle={() => toggle(t.id)} />
+            <ScheduleRow
+              key={t.id}
+              task={t}
+              onToggle={() => toggleTask(t.id)}
+              expanded={expanded === t.id}
+              onExpand={() => setExpanded(e => (e === t.id ? null : t.id))}
+              onToggleSubtask={subId => toggleSubtask(t.id, subId)}
+            />
           ))}
 
           {completed.length > 0 && (
@@ -130,7 +147,7 @@ export default function TodayScreen() {
                 COMPLETED · {completed.length}
               </Text>
               {completed.map(t => (
-                <ScheduleRow key={t.id} task={t} onToggle={() => toggle(t.id)} />
+                <ScheduleRow key={t.id} task={t} onToggle={() => toggleTask(t.id)} />
               ))}
             </>
           )}
@@ -145,6 +162,21 @@ export default function TodayScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* ── Add Task FAB ── */}
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => setSheetOpen(true)}
+        activeOpacity={0.85}
+      >
+        <Text style={s.fabPlus}>＋</Text>
+      </TouchableOpacity>
+
+      <AddTaskSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onAdd={handleAdd}
+      />
     </SafeAreaView>
   );
 }
@@ -166,12 +198,6 @@ const s = StyleSheet.create({
   focusTitle:   { fontSize: 21, fontWeight: '600', color: T.ink, letterSpacing: -0.4 },
   focusMeta:    { fontSize: 14, color: T.ink2, marginTop: 4 },
 
-  ring:      { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
-  ringArc:   { position: 'absolute', inset: 0, borderRadius: 32 },
-  ringInner: { alignItems: 'center', zIndex: 1 },
-  ringNum:   { fontSize: 14, fontWeight: '600', color: T.ink },
-  ringSub:   { fontSize: 9, color: T.ink3, textTransform: 'uppercase', letterSpacing: 0.5 },
-
   startBtn:    { flex: 1, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   completeBtn: { width: 52, height: 52, borderRadius: 18, borderWidth: 0.5, borderColor: T.line, alignItems: 'center', justifyContent: 'center', backgroundColor: T.surface },
 
@@ -180,4 +206,14 @@ const s = StyleSheet.create({
   divider:      { height: 0.5, backgroundColor: T.line, marginVertical: 14 },
   eveningCard:  { marginTop: 24, padding: 16, paddingHorizontal: 18, borderRadius: 20, backgroundColor: T.surfaceMuted },
   eveningEyebrow: { fontSize: 11, color: T.ink3, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 6 },
+
+  fab: {
+    position: 'absolute', right: 20, bottom: 96,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: T.ink,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18, shadowRadius: 14, elevation: 6,
+  },
+  fabPlus: { color: '#fff', fontSize: 24, lineHeight: 28, fontWeight: '400' },
 });

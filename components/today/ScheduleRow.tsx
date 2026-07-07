@@ -5,12 +5,16 @@ import type { Task } from '../../data/seed';
 interface Props {
   task: Task;
   onToggle: () => void;
+  expanded?: boolean;
+  onExpand?: () => void;
+  onToggleSubtask?: (subtaskId: string) => void;
 }
 
-export default function ScheduleRow({ task, onToggle }: Props) {
+export default function ScheduleRow({ task, onToggle, expanded, onExpand, onToggleSubtask }: Props) {
   const parts = task.timeBlock.split(' – ');
   const start = parts[0] ?? '';
   const end   = parts[1] ?? '';
+  const hasSubtasks = !!task.subtasks?.length;
 
   return (
     <View style={styles.row}>
@@ -31,18 +35,49 @@ export default function ScheduleRow({ task, onToggle }: Props) {
 
       {/* Content */}
       <View style={{ flex: 1 }}>
-        <Text style={[styles.title, task.done && styles.titleDone]} numberOfLines={2}>
-          {task.title}
-        </Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.meta}>⏱ {task.estimate} min</Text>
-          {task.aiNote ? (
-            <Text style={styles.aiNote} numberOfLines={1}> · {task.aiNote}</Text>
-          ) : null}
-          {task.subtasks ? (
-            <Text style={styles.meta}> · {task.subtasks.filter(s => s.done).length}/{task.subtasks.length} steps</Text>
-          ) : null}
-        </View>
+        <TouchableOpacity
+          onPress={hasSubtasks ? onExpand : undefined}
+          activeOpacity={hasSubtasks ? 0.7 : 1}
+          disabled={!hasSubtasks}
+        >
+          <Text style={[styles.title, task.done && styles.titleDone]} numberOfLines={2}>
+            {task.title}
+          </Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.meta}>⏱ {task.estimate} min</Text>
+            {task.aiNote ? (
+              <Text style={styles.aiNote} numberOfLines={1}> · {task.aiNote}</Text>
+            ) : null}
+            {task.subtasks ? (
+              <Text style={styles.meta}> · {task.subtasks.filter(s => s.done).length}/{task.subtasks.length} steps</Text>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+
+        {/* Expanded subtask card */}
+        {hasSubtasks && expanded && (
+          <View style={styles.subtaskCard}>
+            {task.subtasks!.map(sub => (
+              <TouchableOpacity
+                key={sub.id}
+                style={styles.subtaskRow}
+                onPress={() => onToggleSubtask?.(sub.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.subCheckbox, sub.done && styles.subCheckboxDone]}>
+                  {sub.done && <Text style={styles.subCheckmark}>✓</Text>}
+                </View>
+                <Text style={[styles.subtaskLabel, sub.done && styles.subtaskLabelDone]}>
+                  {sub.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <View style={styles.aiRow}>
+              <Text style={{ fontSize: 12, color: T.sageInk }}>✦</Text>
+              <Text style={styles.aiRowLabel}>Break down further with AI</Text>
+            </View>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -70,4 +105,28 @@ const styles = StyleSheet.create({
   metaRow:      { flexDirection: 'row', alignItems: 'center', marginTop: 3, flexWrap: 'wrap' },
   meta:         { fontSize: 12, color: T.ink3 },
   aiNote:       { fontSize: 12, color: T.terraInk, flexShrink: 1 },
+
+  subtaskCard: {
+    marginTop: 10, borderRadius: 14, backgroundColor: T.surfaceMuted,
+    paddingVertical: 10, paddingHorizontal: 12,
+  },
+  subtaskRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 6,
+  },
+  subCheckbox: {
+    width: 16, height: 16, borderRadius: 8,
+    borderWidth: 1.5, borderColor: T.ink4,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  subCheckboxDone: { backgroundColor: T.sage, borderColor: T.sage },
+  subCheckmark:    { color: '#fff', fontSize: 8, fontWeight: '700' },
+  subtaskLabel:     { fontSize: 14, color: T.ink2, flex: 1 },
+  subtaskLabelDone: { textDecorationLine: 'line-through', color: T.ink4 },
+  aiRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingTop: 8, marginTop: 2,
+    borderTopWidth: 0.5, borderTopColor: T.line,
+  },
+  aiRowLabel: { fontSize: 13, color: T.sageInk, fontWeight: '500' },
 });
